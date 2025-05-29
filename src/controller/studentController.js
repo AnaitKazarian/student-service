@@ -1,70 +1,67 @@
-import * as repo from '../repository/studentRepository.js';
+import * as service from '../services/studentService.js';
+import {scoreSchema, studentSchema, updateStudentSchema} from "../validator/studentValidator.js";
 
 export const addStudent = async (req, res) => {
-    const success = await repo.addStudent(req.body);
-    if (success) {
-        res.status(204).send();
-    } else {
-        res.status(409).send();
+    const {error} = studentSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({error: error.details[0].message});
     }
+    const success = await service.addStudent(req.body);
+    res.sendStatus(success.status);
 }
 
 export const findStudent = async (req, res) => {
-    const student = await repo.findStudent(+req.params.id);
-    if (student) {
-        delete student.password;
-        res.json(student);
+    const result = await service.findStudent(+req.params.id);
+    if (result.data) {
+        res.json(result.data);
     } else {
-        res.status(404).send();
+        res.sendStatus(result.status);
     }
 }
 
 export const updateStudent = async (req, res) => {
-    const student = await repo.updateStudent(+req.params.id, req.body);
-    if (student) {
-        delete student.scores;
-        res.json(student);
+    const {error} = updateStudentSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({error: error.details[0].message});
+    }
+    const result = await service.updateStudent(+req.params.id, req.body);
+    if (result.data) {
+        res.json(result.data);
     } else {
-        res.status(404).send();
+        res.sendStatus(result.status);
     }
 }
 
 export const deleteStudent = async (req, res) => {
-    const student = await repo.deleteStudent(+req.params.id);
-    if (student) {
-        delete student.password;
-        res.json(student);
+    const result = await service.deleteStudent(+req.params.id);
+    if (result.data) {
+        res.json(result.data);
     } else {
-        res.status(404).send();
+        res.sendStatus(result.status);
     }
 }
 
 export const addScore = async (req, res) => {
-    const success = await repo.addScore(+req.params.id, req.body.examName, +req.body.score);
-    if (success) {
-        res.status(204).send();
-    } else {
-        res.status(404).send();
+    const {error} = scoreSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({error: error.details[0].message});
     }
+    const result = await service.addScore(+req.params.id, req.body.examName, +req.body.score);
+    res.sendStatus(result.status);
 }
 
 export const findByName = async (req, res) => {
-    const students = (await repo.findByName(req.params.name))
-        .map(student => {
-            delete student.password;
-            return student
-        });
-    res.json(students);
+    const result = await service.findByName(req.params.name);
+    res.json(result.data);
 }
 
 export const countByNames = async (req, res) => {
-    const names = req.query.names;
-    const list = Array.isArray(names) ? names : [names];
-    const count = await repo.countByNames(list);
+    const names = Array.isArray(req.query.names) ? req.query.names : [req.query.names];
+    const count = await service.countByNames(names);
     res.json(count)
 }
 
 export const findByMinScore = async (req, res) => {
-    const students = await repo.findByMinScore(req.params.exam, +req.params.minScore);
+    const students = await service.findByMinScore(req.params.exam, +req.params.minScore);
     res.json(students);
 }
