@@ -1,6 +1,9 @@
-import { jest } from '@jest/globals';
 
-const mockService = {
+import { jest } from '@jest/globals';
+import request from 'supertest';
+import express from 'express';
+
+const service = {
     addStudent: jest.fn(),
     findStudent: jest.fn(),
     updateStudent: jest.fn(),
@@ -11,137 +14,186 @@ const mockService = {
     findByMinScore: jest.fn()
 };
 
-jest.unstable_mockModule('../services/studentService.js', () => mockService);
+jest.unstable_mockModule('../services/studentService.js', () => service);
 
-const controller = await import('../controller/studentController.js');
+const {
+    addStudent,
+    findStudent,
+    updateStudent,
+    deleteStudent,
+    addScore,
+    findByName,
+    countByNames,
+    findByMinScore
+} = await import('../controller/studentController.js');
 
-const mockResponse = () => {
-    const res = {};
-    res.status = jest.fn().mockReturnValue(res);
-    res.json = jest.fn().mockReturnValue(res);
-    res.sendStatus = jest.fn().mockReturnValue(res);
-    return res;
-};
+const app = express();
+app.use(express.json());
+app.post('/student', addStudent);
+app.get('/student/:id', findStudent);
+app.delete('/student/:id', deleteStudent);
+app.patch('/student/:id', updateStudent);
+app.patch('/score/student/:id', addScore);
+app.get('/students/name/:name', findByName);
+app.get('/quantity/students', countByNames);
+app.get('/students/exam/:exam/minscore/:minScore', findByMinScore);
 
-describe('studentController', () => {
+describe('Student Controller', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    it('addStudent - success', async () => {
-        const req = { body: { id: 1, name: 'Alice', password: 'secret' } };
-        const res = mockResponse();
-        mockService.addStudent.mockResolvedValue(true);
+    describe('POST /student', () => {
+        it('should return 201 if student is added', async () => {
+            service.addStudent.mockResolvedValue(true);
 
-        await controller.addStudent(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(201);
+            const response = await request(app)
+                .post('/student')
+                .send({ id: 1, name: 'John Doe', password: 'secret123' });
+
+            expect(response.status).toBe(201);
+            expect(service.addStudent).toHaveBeenCalledWith({ id: 1, name: 'John Doe', password: 'secret123' });
+        });
+
+        it('should return 400 if validation fails', async () => {
+            const response = await request(app)
+                .post('/student')
+                .send({ name: '', age: 'abc' });
+
+            expect(response.status).toBe(400);
+            expect(service.addStudent).not.toHaveBeenCalled();
+        });
     });
 
-    it('addStudent - conflict', async () => {
-        const req = { body: { id: 1, name: 'Alice', password: 'secret' } };
-        const res = mockResponse();
-        mockService.addStudent.mockResolvedValue(false);
+    describe('GET /student/:id', () => {
+        it('should return student if found', async () => {
+            service.findStudent.mockResolvedValue({ id: 1, name: 'John' });
 
-        await controller.addStudent(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(409);
+            const response = await request(app).get('/student/1');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({ id: 1, name: 'John' });
+        });
+
+        it('should return 404 if student not found', async () => {
+            service.findStudent.mockResolvedValue(null);
+
+            const response = await request(app).get('/student/999');
+
+            expect(response.status).toBe(404);
+        });
     });
 
-    it('findStudent - found', async () => {
-        const req = { params: { id: '1' } };
-        const res = mockResponse();
-        mockService.findStudent.mockResolvedValue({ id: 1, name: 'Alice' });
+    describe('PATCH /student/:id', () => {
+        it('should update and return student', async () => {
+            service.updateStudent.mockResolvedValue({ id: 1, name: 'Updated' });
 
-        await controller.findStudent(req, res);
-        expect(res.json).toHaveBeenCalledWith({ id: 1, name: 'Alice' });
+            const response = await request(app)
+                .patch('/student/1')
+                .send({ name: 'Updated' });
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({ id: 1, name: 'Updated' });
+        });
+
+        it('should return 400 if validation fails', async () => {
+            const response = await request(app)
+                .patch('/student/1')
+                .send({ name: '' });
+
+            expect(response.status).toBe(400);
+        });
+
+        it('should return 404 if student not found', async () => {
+            service.updateStudent.mockResolvedValue(null);
+
+            const response = await request(app)
+                .patch('/student/999')
+                .send({ name: 'Valid' });
+
+            expect(response.status).toBe(404);
+        });
     });
 
-    it('findStudent - not found', async () => {
-        const req = { params: { id: '1' } };
-        const res = mockResponse();
-        mockService.findStudent.mockResolvedValue(null);
+    describe('DELETE /student/:id', () => {
+        it('should delete student and return it', async () => {
+            service.deleteStudent.mockResolvedValue({ id: 1 });
 
-        await controller.findStudent(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(404);
+            const response = await request(app).delete('/student/1');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({ id: 1 });
+        });
+
+        it('should return 404 if not found', async () => {
+            service.deleteStudent.mockResolvedValue(null);
+
+            const response = await request(app).delete('/student/999');
+
+            expect(response.status).toBe(404);
+        });
     });
 
-    it('updateStudent - success', async () => {
-        const req = { params: { id: '1' }, body: { name: 'Bob' } };
-        const res = mockResponse();
-        mockService.updateStudent.mockResolvedValue({ id: 1, name: 'Bob' });
+    describe('PATCH /score/student/:id', () => {
+        it('should return 204 if score added', async () => {
+            service.addScore.mockResolvedValue(true);
 
-        await controller.updateStudent(req, res);
-        expect(res.json).toHaveBeenCalledWith({ id: 1, name: 'Bob' });
+            const response = await request(app)
+                .patch('/score/student/1')
+                .send({ examName: 'Math', score: 85 });
+
+            expect(response.status).toBe(204);
+        });
+
+        it('should return 400 if validation fails', async () => {
+            const response = await request(app)
+                .patch('/score/student/1')
+                .send({ examName: '', score: 'abc' });
+
+            expect(response.status).toBe(400);
+        });
+
+        it('should return 409 if score not added', async () => {
+            service.addScore.mockResolvedValue(false);
+
+            const response = await request(app)
+                .patch('/score/student/1')
+                .send({ examName: 'Math', score: 85 });
+
+            expect(response.status).toBe(409);
+        });
     });
 
-    it('deleteStudent - success', async () => {
-        const req = { params: { id: '1' } };
-        const res = mockResponse();
-        mockService.deleteStudent.mockResolvedValue({ id: 1, name: 'Alice' });
+    describe('GET /students/name/:name', () => {
+        it('should return students by name', async () => {
+            service.findByName.mockResolvedValue([{ id: 1, name: 'Anna' }]);
 
-        await controller.deleteStudent(req, res);
-        expect(res.json).toHaveBeenCalledWith({ id: 1, name: 'Alice' });
+            const response = await request(app).get('/students/name/Anna');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual([{ id: 1, name: 'Anna' }]);
+        });
     });
 
-    it('deleteStudent - not found', async () => {
-        const req = { params: { id: '1' } };
-        const res = mockResponse();
-        mockService.deleteStudent.mockResolvedValue(null);
+    describe('GET /quantity/students', () => {
+        it('should return count of students by names', async () => {
+            service.countByNames.mockResolvedValue({ Anna: 2, John: 1 });
 
-        await controller.deleteStudent(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(404);
+            const response = await request(app).get('/quantity/students?names=Anna&names=John');
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({ Anna: 2, John: 1 });
+        });
     });
 
-    it('addScore - success', async () => {
-        const req = { params: { id: '1' }, body: { examName: 'Math', score: 95 } };
-        const res = mockResponse();
-        mockService.addScore.mockResolvedValue(true);
+    describe('GET /students/exam/:exam/minscore/:minScore', () => {
+        it('should return students with score >= minScore', async () => {
+            service.findByMinScore.mockResolvedValue([{ id: 1, name: 'Test' }]);
 
-        await controller.addScore(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(204);
-    });
+            const response = await request(app).get('/students/exam/Math/minscore/80');
 
-    it('addScore - conflict', async () => {
-        const req = { params: { id: '1' }, body: { examName: 'Math', score: 95 } };
-        const res = mockResponse();
-        mockService.addScore.mockResolvedValue(false);
-
-        await controller.addScore(req, res);
-        expect(res.sendStatus).toHaveBeenCalledWith(409);
-    });
-
-    it('findByName - should return students', async () => {
-        const req = { params: { name: 'Alice' } };
-        const res = mockResponse();
-        mockService.findByName.mockResolvedValue([{ id: 1, name: 'Alice' }]);
-
-        await controller.findByName(req, res);
-        expect(res.json).toHaveBeenCalledWith([{ id: 1, name: 'Alice' }]);
-    });
-
-    it('countByNames - single param', async () => {
-        const req = { query: { names: 'Alice' } };
-        const res = mockResponse();
-        mockService.countByNames.mockResolvedValue(1);
-
-        await controller.countByNames(req, res);
-        expect(res.json).toHaveBeenCalledWith(1);
-    });
-
-    it('countByNames - multiple params', async () => {
-        const req = { query: { names: ['Alice', 'Bob'] } };
-        const res = mockResponse();
-        mockService.countByNames.mockResolvedValue(2);
-
-        await controller.countByNames(req, res);
-        expect(res.json).toHaveBeenCalledWith(2);
-    });
-
-    it('findByMinScore - should return students', async () => {
-        const req = { params: { exam: 'Math', minScore: '80' } };
-        const res = mockResponse();
-        mockService.findByMinScore.mockResolvedValue([{ id: 1, name: 'Alice' }]);
-
-        await controller.findByMinScore(req, res);
-        expect(res.json).toHaveBeenCalledWith([{ id: 1, name: 'Alice' }]);
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual([{ id: 1, name: 'Test' }]);
+        });
     });
 });
